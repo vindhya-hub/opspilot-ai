@@ -42,12 +42,18 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from torch import nn
 
-from opspilot.config import DEFAULT_ARTIFACTS_DIR
+from opspilot.config import Settings
 from opspilot.data.generator import DEFAULT_SEED, generate_tickets
 from opspilot.features import build_feature_pipeline
-from opspilot.model import EscalationMLP, EscalationModel, ModelMetadata, fingerprint, to_tensor
+from opspilot.model import (
+    METRICS_FILE,
+    EscalationMLP,
+    EscalationModel,
+    ModelMetadata,
+    fingerprint,
+    to_tensor,
+)
 
-METRICS_FILE = "metrics.json"
 THRESHOLD_GRID = np.round(np.arange(0.05, 0.951, 0.01), 2)
 
 
@@ -315,7 +321,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Train the OpsPilot escalation-risk model on synthetic tickets."
     )
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_ARTIFACTS_DIR)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="where to write artifacts (default: OPSPILOT_ARTIFACTS_DIR, else ./artifacts)",
+    )
     parser.add_argument("--n-samples", type=int, default=TrainingConfig.n_samples)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--max-epochs", type=int, default=TrainingConfig.max_epochs)
@@ -336,9 +347,10 @@ def main(argv: list[str] | None = None) -> int:
         max_features=args.max_features,
         run_baseline=not args.no_baseline,
     )
-    result = run_training(config, output_dir=args.output_dir)
+    output_dir = args.output_dir or Settings().artifacts_dir
+    result = run_training(config, output_dir=output_dir)
     print(format_summary(result.metrics))
-    print(f"  artifacts        {args.output_dir}")
+    print(f"  artifacts        {output_dir}")
 
     test_f1 = result.metrics["test"]["f1"]
     if args.min_test_f1 is not None and test_f1 < args.min_test_f1:

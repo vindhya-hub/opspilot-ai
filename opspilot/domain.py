@@ -11,13 +11,20 @@ ProductArea = Literal[
 Channel = Literal["email", "chat", "web_form", "phone", "social"]
 Route = Literal["auto_draft", "human_review"]
 RiskBand = Literal["low", "medium", "high"]
+ReviewStatus = Literal["pending", "resolved"]
+#: What the reviewer did: sent the draft as is, edited it, escalated further, or closed it.
+Resolution = Literal["approved", "edited", "escalated", "dismissed"]
 
 TIERS: tuple[str, ...] = get_args(CustomerTier)
 PRODUCT_AREAS: tuple[str, ...] = get_args(ProductArea)
 CHANNELS: tuple[str, ...] = get_args(Channel)
+RESOLUTIONS: tuple[str, ...] = get_args(Resolution)
 
 AUTO_DRAFT: Route = "auto_draft"
 HUMAN_REVIEW: Route = "human_review"
+KEY_ACCOUNT_TIERS: tuple[str, ...] = ("business", "enterprise")
+#: Prior contacts in 30 days that trigger mandatory escalation (kb/sla-escalation-policy.md).
+REPEAT_CONTACT_TRIGGER = 3
 
 #: SLA window in hours per tier: the longest a ticket may stay open without a
 #: resolution or an agreed action plan. Mirrors ``kb/sla-escalation-policy.md``.

@@ -20,6 +20,7 @@ PIPELINE_FILE = "feature_pipeline.joblib"
 WEIGHTS_FILE = "classifier.pt"
 METADATA_FILE = "model_metadata.json"
 ARTIFACT_FILES = (PIPELINE_FILE, WEIGHTS_FILE, METADATA_FILE)
+METRICS_FILE = "metrics.json"  # written by `python -m opspilot.train`, optional at load time
 
 
 class EscalationMLP(nn.Module):

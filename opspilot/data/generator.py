@@ -28,14 +28,20 @@ from typing import Any
 
 import numpy as np
 
-from opspilot.domain import CHANNELS, PRODUCT_AREAS, SLA_HOURS, TIERS
+from opspilot.domain import (
+    CHANNELS,
+    KEY_ACCOUNT_TIERS,
+    PRODUCT_AREAS,
+    REPEAT_CONTACT_TRIGGER,
+    SLA_HOURS,
+    TIERS,
+)
 
 DEFAULT_SEED = 42
 
 TIER_PROBS = (0.36, 0.30, 0.21, 0.13)
 AREA_PROBS = (0.22, 0.17, 0.18, 0.12, 0.17, 0.14)
 CHANNEL_PROBS = (0.40, 0.26, 0.17, 0.10, 0.07)
-KEY_ACCOUNT_TIERS = ("business", "enterprise")
 
 # Contribution of each structured field to the escalation logit.
 TIER_EFFECT = {"free": -0.6, "pro": 0.0, "business": 0.35, "enterprise": 0.8}
@@ -421,7 +427,7 @@ def _make_ticket(index: int, rng: np.random.Generator, include_latent: bool) -> 
         + CHANNEL_EFFECT[channel]
         + (KEY_ACCOUNT_BREACH_BONUS if breached and key_account else 0.0)
         + (KEY_ACCOUNT_FRUSTRATION_WEIGHT * frustration if key_account else 0.0)
-        + (REPEAT_CONTACT_BONUS if prior_contacts >= 3 else 0.0)
+        + (REPEAT_CONTACT_BONUS if prior_contacts >= REPEAT_CONTACT_TRIGGER else 0.0)
     )
     noisy_logit = logit + float(rng.normal(0.0, LOGIT_NOISE_SD))
     escalated = rng.random() < _sigmoid(SHARPNESS * noisy_logit)
