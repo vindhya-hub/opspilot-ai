@@ -1,0 +1,47 @@
+[project]
+name = "opspilot-ai"
+version = "0.1.0"
+description = "Escalation-risk triage for support tickets: PyTorch model inference, cited guidance drafts and human-review routing."
+readme = "README.md"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["dashboard"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "N",   # pep8-naming
+    "PT",  # flake8-pytest-style
+    "RUF", # ruff-specific rules
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependency markers are evaluated once at import time by design.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["opspilot"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "\\.\\.\\.$",
+]
