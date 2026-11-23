@@ -1,0 +1,69 @@
+# Alerting rules for the OpsPilot API. Latency histograms have a 0.3 s bucket, so the
+# 300 ms threshold is exact rather than interpolated by histogram_quantile.
+groups:
+  - name: opspilot-api
+    rules:
+      - alert: OpsPilotTriageLatencyP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(opspilot_http_request_duration_seconds_bucket{method="POST", route="/v1/triage"}[5m])
+            )
+          ) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 latency of POST /v1/triage is above 300 ms"
+          description: "p95 triage latency has been {{ $value | humanizeDuration }} for 5 minutes (threshold 300 ms)."
+
+      - alert: OpsPilotHighErrorRate
+        expr: |
+          sum(rate(opspilot_http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(opspilot_http_requests_total[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "More than 5% of OpsPilot API requests fail with 5xx"
+          description: "5xx ratio is {{ $value | humanizePercentage }} over the last 5 minutes (503 means no model is loaded)."
+
+      - alert: OpsPilotInferenceLatencyP95High
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(opspilot_model_inference_seconds_bucket[5m])))
+          > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 model inference latency is above 100 ms"
+          description: "Feature pipeline + MLP forward pass p95 is {{ $value | humanizeDuration }}."
+
+      - alert: OpsPilotModelNotLoaded
+        expr: opspilot_model_loaded == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OpsPilot API is running without a model"
+          description: "Triage and predict return 503 until artifacts are available (python -m opspilot.train)."
+
+      - alert: OpsPilotApiDown
+        expr: up{job="opspilot-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape the OpsPilot API"
+          description: "The /metrics endpoint of {{ $labels.instance }} has been unreachable for 1 minute."
+
+      - alert: OpsPilotReviewBacklogHigh
+        expr: opspilot_review_queue_pending > 50
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 50 tickets are waiting for human review"
+          description: "{{ $value }} high-risk tickets have been pending review for 30 minutes."

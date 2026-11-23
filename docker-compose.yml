@@ -1,0 +1,63 @@
+# OpsPilot AI: API + dashboard + Prometheus.
+#   docker compose up --build
+# Configuration comes from your shell or a git-ignored `.env` next to this file (see
+# .env.example) through ${VAR} substitution. No value in this file is a secret.
+name: opspilot
+
+services:
+  api:
+    build: .
+    image: opspilot-api:local
+    environment:
+      OPSPILOT_LOG_LEVEL: ${OPSPILOT_LOG_LEVEL:-info}
+      OPSPILOT_CORS_ORIGINS: ${OPSPILOT_CORS_ORIGINS:-http://localhost:8080}
+      OPSPILOT_RISK_THRESHOLD: ${OPSPILOT_RISK_THRESHOLD:-}
+      OPSPILOT_MEDIUM_THRESHOLD: ${OPSPILOT_MEDIUM_THRESHOLD:-}
+      OPSPILOT_RETRIEVAL_TOP_K: ${OPSPILOT_RETRIEVAL_TOP_K:-}
+      OPSPILOT_QUEUE_BACKEND: ${OPSPILOT_QUEUE_BACKEND:-sqlite}
+      OPSPILOT_MAX_REQUEST_BYTES: ${OPSPILOT_MAX_REQUEST_BYTES:-}
+      OPSPILOT_TORCH_THREADS: ${OPSPILOT_TORCH_THREADS:-}
+      # Optional LLM composer (off by default). The key is only ever substituted from the
+      # environment or .env; startup fails clearly if the hook is enabled without it.
+      OPSPILOT_COMPOSER: ${OPSPILOT_COMPOSER:-template}
+      OPSPILOT_LLM_BASE_URL: ${OPSPILOT_LLM_BASE_URL:-}
+      OPSPILOT_LLM_MODEL: ${OPSPILOT_LLM_MODEL:-}
+      OPSPILOT_LLM_API_KEY: ${OPSPILOT_LLM_API_KEY:-}
+      OPSPILOT_LLM_TIMEOUT_SECONDS: ${OPSPILOT_LLM_TIMEOUT_SECONDS:-}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - review-queue:/app/data
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+      args:
+        # Public URL the browser uses to reach the API (baked into the static bundle).
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    image: opspilot-dashboard:local
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  review-queue:
+  prometheus-data:

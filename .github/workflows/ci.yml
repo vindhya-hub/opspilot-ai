@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# No secrets are needed: tests generate their own ephemeral values and nothing is pushed.
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "24"
+  TORCH_VERSION: "2.15.0"
+
+jobs:
+  python:
+    name: Python - lint, train, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies (CPU-only PyTorch)
+        run: |
+          python -m pip install --upgrade pip
+          pip install "torch==${TORCH_VERSION}" --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Train model (quality gate on held-out test F1, synthetic data)
+        run: python -m opspilot.train --output-dir artifacts --min-test-f1 0.85
+
+      - name: Test (coverage gate 80%)
+        run: pytest --cov=opspilot --cov-report=term-missing --cov-fail-under=80
+
+      - name: Upload training metrics
+        uses: actions/upload-artifact@v7
+        with:
+          name: training-metrics
+          path: artifacts/metrics.json
+
+  dashboard:
+    name: Dashboard - lint, typecheck, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Build
+        run: npm run build
+        env:
+          VITE_API_URL: http://localhost:8000 # public build-time setting, not a secret
+
+  monitoring:
+    name: Prometheus config and alert rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: promtool check config (includes alerts.yml)
+        run: >
+          docker run --rm -v "$PWD/prometheus:/etc/prometheus:ro"
+          --entrypoint promtool prom/prometheus:v3.16.0
+          check config /etc/prometheus/prometheus.yml
+
+  docker:
+    name: Docker images (build only, no push)
+    runs-on: ubuntu-latest
+    needs: [python, dashboard]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+
+      - name: Build API image
+        run: docker build --tag opspilot-api:ci .
+
+      - name: Build dashboard image
+        run: docker build --tag opspilot-dashboard:ci --build-arg VITE_API_URL=http://localhost:8000 dashboard
+
+      - name: Smoke-test the API image
+        run: |
+          docker run --detach --name opspilot-api --publish 8000:8000 opspilot-api:ci
+          for attempt in $(seq 1 30); do
+            curl --silent --fail http://localhost:8000/readyz && break
+            sleep 2
+          done
+          curl --silent --fail --show-error -X POST http://localhost:8000/v1/triage \
+            -H "Content-Type: application/json" \
+            -d '{"subject": "Charged twice", "body": "I was charged twice this month.", "customer_tier": "pro", "product_area": "billing", "channel": "email"}'
+          curl --silent --fail http://localhost:8000/metrics | grep "opspilot_model_loaded 1.0"
+
+      - name: API container logs
+        if: always()
+        run: docker logs opspilot-api || true
